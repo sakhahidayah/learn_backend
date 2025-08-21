@@ -1,232 +1,128 @@
-// server.js - Improved version dengan security fixes
 const bodyParser = require("body-parser");
 const express = require("express");
 const app = express();
-const port = process.env.PORT || 3000;
+const port = 3000;
 const db = require("./connection");
 const cors = require("cors");
 const response = require("./response");
-
-// Middleware
 app.use(bodyParser.json());
 app.use(cors());
-
-// Health check endpoint
-app.get("/health", (req, res) => {
-  // Test database connection
-  db.query("SELECT 1 + 1 AS result", (err, result) => {
-    if (err) {
-      res.status(500).json({
-        status: "unhealthy",
-        database: "disconnected",
-        error: err.message,
-      });
-    } else {
-      res.json({
-        status: "healthy",
-        database: "connected",
-        timestamp: new Date().toISOString(),
-        test_result: result[0]?.result,
-      });
-    }
-  });
-});
-
 app.get("/", (req, res) => {
-  res.json({
-    message: "API Lingkup Sekolah",
-    version: "1.0.0",
-    endpoints: {
-      health: "/health",
-      siswa: {
-        get_all: "GET /siswa",
-        get_by_id: "GET /siswa/:id",
-        search: "GET /siswa/search?q=keyword",
-        create: "POST /siswa",
-        update: "PUT /siswa/update",
-        delete: "DELETE /siswa",
-      },
-    },
-  });
+  if (res.statusCode === 200) {
+    res.send("route test");
+  } else {
+    res.send("error");
+  }
 });
 
 // GET ALL DATA
 app.get("/siswa", (req, res) => {
-  const sql = "SELECT * FROM siswa_db ORDER BY id DESC";
+  const sql = "SELECT * FROM siswa_db";
   db.query(sql, (err, result) => {
-    if (err) {
-      console.error("Get siswa error:", err);
-      response(500, null, "Gagal mengambil data siswa", res);
-      return;
-    }
-    response(200, result, "Berhasil mendapatkan seluruh data!", res);
+    // console.log(result);
+    response(200, result, "berhasil mendapatkan seluruh data !", res);
   });
 });
 
-// ADD DATA - dengan prepared statement untuk security
+// ADD DATA
 app.post("/siswa", (req, res) => {
   const { nama_siswa, status_siswa, nik_sekolah } = req.body;
-
-  // Validasi input
-  if (!nama_siswa || !status_siswa || !nik_sekolah) {
-    response(400, null, "Nama siswa, status siswa, dan NIK sekolah wajib diisi", res);
-    return;
-  }
-
-  const sql = "INSERT INTO siswa_db (nama_siswa, status_siswa, nik_sekolah) VALUES (?, ?, ?)";
-  db.query(sql, [nama_siswa, status_siswa, nik_sekolah], (err, result) => {
-    if (err) {
-      console.error("Add siswa error:", err);
-      if (err.code === "ER_DUP_ENTRY") {
-        response(409, null, "Data dengan NIK ini sudah ada", res);
-      } else {
-        response(500, null, "Gagal menambahkan data siswa", res);
-      }
-      return;
-    }
-
+  const sql = `INSERT INTO siswa_db (nama_siswa, status_siswa, nik_sekolah) 
+             VALUES ('${nama_siswa}', '${status_siswa}', ${nik_sekolah})`;
+  db.query(sql, (err, result) => {
+    if (err) response(500, "Invalid", "Error NIK/ID", res);
     if (result?.affectedRows) {
       const data = {
         isSuccess: result.affectedRows,
         id: result.insertId,
       };
-      response(201, data, "Berhasil menambahkan data siswa", res);
+      response(200, data, "Berhasil menambahkan data", res);
     }
   });
 });
 
-// UPDATE DATA - dengan prepared statement
+// UPDATE DATA
 app.put("/siswa/update", (req, res) => {
   const { nama_siswa, status_siswa, id, nik_sekolah } = req.body;
-
-  // Validasi input
-  if (!id) {
-    response(400, null, "ID siswa wajib diisi", res);
-    return;
-  }
-
-  const sql = "UPDATE siswa_db SET nama_siswa = ?, status_siswa = ?, nik_sekolah = ? WHERE id = ?";
-  db.query(sql, [nama_siswa, status_siswa, nik_sekolah, id], (err, result) => {
+  // console.log(req.body);
+  const sql = `UPDATE siswa_db SET nama_siswa = '${nama_siswa}', status_siswa = '${status_siswa}', nik_sekolah = '${nik_sekolah}' WHERE id = '${id}'`;
+  db.query(sql, (err, result) => {
     if (err) {
-      console.error("Update siswa error:", err);
-      response(500, null, "Gagal mengupdate data siswa", res);
+      response(500, "Invalid", "Failed To Update", res);
       return;
     }
-
-    if (result?.affectedRows > 0) {
+    if (result?.affectedRows) {
       const data = {
         isSuccess: result.affectedRows,
-        message: "Data berhasil diupdate",
+        message: result.info,
       };
-      response(200, data, "Update data berhasil", res);
+      response(200, data, "Update data Succesfully ", res);
+      console.log(data);
     } else {
-      response(404, null, "Data dengan ID tersebut tidak ditemukan", res);
+      const data = {
+        isSuccess: result.affectedRows,
+        message: result.info,
+      };
+      response(404, data, "ID not Found", res);
     }
+    // console.log(response);
   });
 });
 
-// DELETE DATA - dengan prepared statement
+// DELETE DATA
 app.delete("/siswa", (req, res) => {
   const { id } = req.body;
-
-  if (!id) {
-    response(400, null, "ID siswa wajib diisi", res);
-    return;
-  }
-
-  const sql = "DELETE FROM siswa_db WHERE id = ?";
-  db.query(sql, [id], (err, result) => {
-    if (err) {
-      console.error("Delete siswa error:", err);
-      response(500, null, "Gagal menghapus data siswa", res);
-      return;
-    }
-
-    if (result?.affectedRows > 0) {
+  const sql = `DELETE FROM siswa_db WHERE id = ${id}`;
+  db.query(sql, (err, result) => {
+    if (err) response(500, "Invalid", "Failed to Delete", res);
+    if (result?.affectedRows) {
       const data = {
         isDelete: result.affectedRows,
-        message: "Data berhasil dihapus",
+        message: result.info,
       };
-      response(200, data, "Delete data berhasil", res);
+      response(200, data, "Delete data Succesfully ", res);
     } else {
-      response(404, null, "Data dengan ID tersebut tidak ditemukan", res);
+      const data = {
+        isSuccess: result.affectedRows,
+        message: result.info,
+      };
+      response(404, data, "ID not Found", res);
     }
   });
 });
 
-// SEARCH DATA - dengan prepared statement
+// SEARCH DATA FROM ID
 app.get("/siswa/search", (req, res) => {
   const { q } = req.query;
-
-  if (!q) {
-    response(400, null, "Parameter pencarian (q) wajib diisi", res);
-    return;
+  let sql = `SELECT * FROM siswa_db WHERE 1=1`;
+  let params = [];
+  if (q) {
+    sql += " AND (nama_siswa LIKE ? OR status_siswa LIKE ? OR nik_sekolah LIKE ?)";
+    params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
   }
 
-  const sql = `SELECT * FROM siswa_db 
-               WHERE nama_siswa LIKE ? 
-               OR status_siswa LIKE ? 
-               OR nik_sekolah LIKE ?
-               ORDER BY id DESC`;
-
-  const searchTerm = `%${q}%`;
-  db.query(sql, [searchTerm, searchTerm, searchTerm], (err, result) => {
-    if (err) {
-      console.error("Search siswa error:", err);
-      response(500, null, "Gagal mencari data siswa", res);
-      return;
-    }
-    response(200, result, `Pencarian dengan keyword "${q}" berhasil`, res);
+  db.query(sql, params, (error, result) => {
+    // console.log(result);
+    response(200, result, `Search success`, res);
   });
 });
 
-// GET BY ID - dengan prepared statement
 app.get("/siswa/:id", (req, res) => {
   const { id } = req.params;
-
-  if (!id || isNaN(id)) {
-    response(400, null, "ID siswa tidak valid", res);
-    return;
-  }
-
-  const sql = "SELECT * FROM siswa_db WHERE id = ?";
-  db.query(sql, [id], (err, result) => {
-    if (err) {
-      console.error("Get siswa by ID error:", err);
-      response(500, null, "Gagal mengambil data siswa", res);
-      return;
-    }
-
-    if (result.length === 0) {
-      response(404, null, "Data siswa tidak ditemukan", res);
-    } else {
-      response(200, result[0], "Data siswa berhasil ditemukan", res);
-    }
+  let sql = `SELECT * FROM siswa_db WHERE id = ${id}`;
+  db.query(sql, (error, result) => {
+    response(200, result, `Search success`, res);
   });
 });
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error("Unhandled error:", err);
-  response(500, null, "Internal server error", res);
-});
-
-// 404 handler
-app.use("*", (req, res) => {
-  response(404, null, "Endpoint tidak ditemukan", res);
-});
-
-// Graceful shutdown
-process.on("SIGINT", () => {
-  console.log("🔄 Gracefully shutting down...");
-  db.end(() => {
-    console.log("🔚 Database connection closed");
-    process.exit(0);
+app.get("/siswa", (req, res) => {
+  const { id, nama_siswa, nik_sekolah, status_siswa } = req.query;
+  const sql = `SELECT * FROM siswa_db WHERE id = '${id}', nama_siswa = "${nama_siswa}", nik_sekolah = "${nik_sekolah}", status_siswa = "${status_siswa}"`;
+  db.query(sql, (error, result) => {
+    response(200, result, "testing search pake nama ", res);
   });
 });
 
-app.listen(port, "0.0.0.0", () => {
-  console.log(`🚀 Server running on port ${port}`);
-  console.log(`📊 Environment: ${process.env.NODE_ENV || "development"}`);
-  console.log(`🔗 Health check: http://localhost:${port}/health`);
+app.listen(port, () => {
+  console.log(`Example app listening on port ${port}`);
 });
