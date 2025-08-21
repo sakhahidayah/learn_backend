@@ -20,6 +20,7 @@ app.get("/siswa", (req, res) => {
   const sql = "SELECT * FROM siswa_db";
   db.query(sql, (err, result) => {
     // console.log(result);
+    console.log(err);
     response(200, result, "berhasil mendapatkan seluruh data !", res);
   });
 });
